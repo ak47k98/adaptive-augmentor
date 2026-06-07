@@ -1,0 +1,15 @@
+# 数据集配置模板
+# 复制此文件并修改路径为你的实际数据集路径
+
+# 根目录（train/val 路径相对于此目录）
+path: "/path/to/your/dataset"
+
+# 训练集图片目录（相对于 path）
+train: images/train
+val: images/val
+test: images/test
+
+# 类别
+nc: 1
+names:
+  0: person

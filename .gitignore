@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+sr/weights/*.pth
+weights/
+output_aug/
+*.log
