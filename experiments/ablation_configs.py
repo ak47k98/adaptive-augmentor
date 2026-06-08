@@ -468,7 +468,18 @@ EXPERIMENTS = {
         use_taxonomy=True,
         operator_selection="fixed_rule",
         fixed_mapping={
-            k: "zoom_sr" if "scale" in k else "hard_negative" for k in FIXED_MAPPING
+            # Scale 相关 → zoom_sr / sr
+            ErrorType.SCALE_FN: "zoom_sr",
+            ErrorType.BLUR_FN: "sr",
+            ErrorType.LOW_CONTRAST_FN: "sr",
+            # 非 scale 类型 → 退化为 zoom_crop（O5 算子库不含 context_crop/mosaic 等）
+            ErrorType.BOUNDARY_FN: "zoom_crop",
+            ErrorType.OCCLUSION_FN: "zoom_crop",
+            ErrorType.CROWDING_FN: "zoom_crop",
+            ErrorType.OTHER_FN: "zoom_crop",
+            ErrorType.BACKGROUND_FP: "hard_negative",
+            ErrorType.CLUSTER_FP: "hard_negative",
+            ErrorType.HIGH_CONF_FP: "hard_negative",
         },
         enabled_operators=["zoom_crop", "sr", "zoom_sr", "hard_negative"],
         num_rounds=1,

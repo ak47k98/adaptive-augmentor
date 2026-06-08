@@ -114,10 +114,12 @@ class RepairPolicy:
         return np.random.choice(operators, p=weights)
 
     def record_repair(self, error_type, operator, success):
-        """记录修复结果"""
+        """
+        记录修复结果
+        success: float in [0, 1]，连续值表示该算子的修复贡献份额
+        """
         self.repair_history[error_type][operator]["attempts"] += 1
-        if success:
-            self.repair_history[error_type][operator]["successes"] += 1
+        self.repair_history[error_type][operator]["successes"] += success
 
         record = self.repair_history[error_type][operator]
         if record["attempts"] > 0:

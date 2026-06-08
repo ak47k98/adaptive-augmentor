@@ -224,9 +224,6 @@ def generate_repair_samples(fn_list, fp_list, policy, train_img_dir, train_lab_d
         error_type = fp_item["error_type"]
         operator_name = policy.select_operator(error_type)
 
-        if operator_name != "hard_negative":
-            continue
-
         img_path = os.path.join(train_img_dir, fp_item["image"])
         img = cv2.imread(img_path)
         if img is None:
@@ -474,7 +471,7 @@ def _run_single_round(args, YOLO, sr_engine, policy,
             print("\n" + "-" * 40)
             print("随机增强对照组对比")
             print("-" * 40)
-            random_weights_path = os.path.join(round_out, "random_repaired_best.pt")
+            random_weights_path = args.random_repaired_weights or os.path.join(round_out, "random_repaired_best.pt")
             if os.path.exists(random_weights_path):
                 random_model = YOLO(random_weights_path)
                 _, random_fn_after, random_fp_after = run_diagnosis(
@@ -498,10 +495,14 @@ def _run_single_round(args, YOLO, sr_engine, policy,
         print("=" * 60)
 
         for error_type, stats in fn_validation.items():
-            for op_name in gen_stats:
-                if error_type in op_name:
-                    success = stats["repair_rate"] > 0.1
-                    policy.record_repair(error_type, op_name.split("+")[1], success)
+            total = sum(v for k, v in gen_stats.items() if k.startswith(error_type + "+"))
+            if total == 0:
+                continue
+            for key, count in gen_stats.items():
+                if key.startswith(error_type + "+"):
+                    op_name = key.split("+", 1)[1]
+                    share = count / total
+                    policy.record_repair(error_type, op_name, stats["repair_rate"] * share)
 
         updates = policy.update_policy(learning_rate=0.2)
         for error_type, info in updates.items():
@@ -627,6 +628,8 @@ def main():
                         help="闭环迭代轮数 (默认 1)")
     parser.add_argument("--random_baseline", action="store_true",
                         help="生成随机增强对照组用于对比实验")
+    parser.add_argument("--random_repaired_weights", type=str, default=None,
+                        help="随机增强对照组的修复后模型权重")
 
     args = parser.parse_args()
     run_closed_loop(args)

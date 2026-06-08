@@ -198,15 +198,18 @@ class ErrorDiagnoser:
         fn_results = []
         for gi, gt in enumerate(gt_boxes):
             if not gt_matched[gi]:
-                error_type = self._classify_fn(img, gt, gt_boxes, img_w, img_h, img_area)
-                fn_results.append({
+                error_type, secondary_type = self._classify_fn(img, gt, gt_boxes, img_w, img_h, img_area)
+                result = {
                     "gt_index": gi,
                     "class": gt["cls"],
                     "box_px": gt["px"],
                     "area_px": gt["area_px"],
                     "side": gt["side"],
                     "error_type": error_type,
-                })
+                }
+                if secondary_type:
+                    result["secondary_type"] = secondary_type
+                fn_results.append(result)
 
         # 诊断 FP
         fp_results = []
@@ -224,46 +227,58 @@ class ErrorDiagnoser:
         return fn_results, fp_results
 
     def _classify_fn(self, img, gt, all_gt, img_w, img_h, img_area):
-        """对单个 FN 进行错误分类"""
+        """对单个 FN 进行错误分类，返回 (primary_type, secondary_type)"""
         px = gt["px"]
         area_px = gt["area_px"]
         side = gt["side"]
 
+        # 按优先级评估所有条件
+        conditions = []
+
         # 1. Scale FN: 目标太小
         if side < 32:
-            return ErrorType.SCALE_FN
+            conditions.append(ErrorType.SCALE_FN)
 
         # 2. Boundary FN: 目标在边界
         boundary_ratio = self.analyzer.compute_boundary_ratio(px, img_w, img_h)
         if boundary_ratio > 0.3:
-            return ErrorType.BOUNDARY_FN
+            conditions.append(ErrorType.BOUNDARY_FN)
 
         # 3. Occlusion FN: 检查遮挡（通过与相邻目标的 IoU 判断）
+        occluded = False
         for other_gt in all_gt:
             if other_gt is gt:
                 continue
             iou = compute_iou(px, other_gt["px"])
             if iou > 0.3:
-                return ErrorType.OCCLUSION_FN
+                occluded = True
+                break
+        if occluded:
+            conditions.append(ErrorType.OCCLUSION_FN)
 
         # 4. Crowding FN: 目标周围过密
         density = self.analyzer.compute_density(
             [g["px"] for g in all_gt], px, radius_ratio=3.0)
         if density >= 3:
-            return ErrorType.CROWDING_FN
+            conditions.append(ErrorType.CROWDING_FN)
 
         # 5. Blur FN: 模糊
         blur_score = self.analyzer.compute_blur_score(img, px)
-        if blur_score < 50:  # Laplacian 方差 < 50 通常表示模糊
-            return ErrorType.BLUR_FN
+        if blur_score < 50:
+            conditions.append(ErrorType.BLUR_FN)
 
         # 6. Low Contrast FN: 低对比度
         contrast_score = self.analyzer.compute_contrast_score(img, px)
         if contrast_score < 20:
-            return ErrorType.LOW_CONTRAST_FN
+            conditions.append(ErrorType.LOW_CONTRAST_FN)
 
-        # 7. 其他
-        return ErrorType.OTHER_FN
+        # 7. 兜底
+        if not conditions:
+            return ErrorType.OTHER_FN, None
+
+        primary = conditions[0]
+        secondary = conditions[1] if len(conditions) > 1 else None
+        return primary, secondary
 
     def _classify_fp(self, pred_b, gt_boxes):
         """对单个 FP 进行错误分类"""
@@ -357,6 +372,12 @@ def run_diagnosis(model, val_img_dir, val_lab_dir, class_names,
         })
 
     # 生成报告
+    secondary_type_counts = defaultdict(int)
+    for fn in all_fn:
+        st = fn.get("secondary_type")
+        if st:
+            secondary_type_counts[st] += 1
+
     report = {
         "总图片数": len(img_files),
         "FN 总数": len(all_fn),
@@ -364,6 +385,7 @@ def run_diagnosis(model, val_img_dir, val_lab_dir, class_names,
         "FN 类型分布": {k: v for k, v in sorted(fn_type_counts.items(), key=lambda x: -x[1])},
         "FP 类型分布": {k: v for k, v in sorted(fp_type_counts.items(), key=lambda x: -x[1])},
         "FN 类型占比": {},
+        "FN 次要类型分布": {k: v for k, v in sorted(secondary_type_counts.items(), key=lambda x: -x[1])},
     }
 
     if len(all_fn) > 0:
@@ -379,6 +401,7 @@ def run_diagnosis(model, val_img_dir, val_lab_dir, class_names,
         "image": fn["image"],
         "class": fn["class_name"],
         "error_type": fn["error_type"],
+        "secondary_type": fn.get("secondary_type", ""),
         "area_px": fn["area_px"],
         "side": fn["side"],
         "box_x1": fn["box_px"][0],
@@ -421,6 +444,10 @@ def run_diagnosis(model, val_img_dir, val_lab_dir, class_names,
     for k, v in fp_type_counts.items():
         pct = v / max(len(all_fp), 1) * 100
         print(f"  {k:25s}: {v:4d} ({pct:.1f}%)")
+    if secondary_type_counts:
+        print("\nFN 次要类型分布 (同目标满足多个条件):")
+        for k, v in secondary_type_counts.items():
+            print(f"  {k:25s}: {v:4d}")
     print("=" * 60)
 
     return report, all_fn, all_fp

@@ -288,10 +288,11 @@ class ContextCropOperator(RepairOperator):
         if bw_t <= 0 or bh_t <= 0:
             return None, None
 
-        # 扩展到图像中心区域，保留上下文
-        cx, cy = w / 2, h / 2
-        crop_w = w * self.context_ratio
-        crop_h = h * self.context_ratio
+        # 以目标框为中心，扩展上下文
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        expand = 1 + self.context_ratio * 2
+        crop_w = bw_t * expand
+        crop_h = bh_t * expand
 
         c_x1 = int(max(0, cx - crop_w / 2))
         c_y1 = int(max(0, cy - crop_h / 2))
@@ -482,6 +483,20 @@ class MosaicOperator(RepairOperator):
 
         if not all_labels:
             return None, None
+
+        # 检查目标尺寸退化：Mosaic 将每张图缩小至 imgsz/2，可能导致目标过小
+        small_count = 0
+        for label in all_labels:
+            parts = label.split()
+            if len(parts) >= 5:
+                bw, bh = float(parts[3]), float(parts[4])
+                side = out_size * np.sqrt(bw * bh)
+                if side < 32:
+                    small_count += 1
+        if small_count > 0:
+            print(f"  [Mosaic] 警告: {small_count}/{len(all_labels)} 个目标尺寸 < 32px，"
+                  f"YOLO 自带 Mosaic 训练时会进一步 resize，该退化通常在训练 pipeline 中缓解")
+
         return mosaic_img, all_labels
 
 

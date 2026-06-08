@@ -1,5 +1,6 @@
 """
 消融实验配置 - Ablation Experiment Configurations
+(兼容层 — 规范定义见 experiments/ablation_configs.py)
 
 实验分组：
   基线组:   B0 (无增强), B1 (随机增强), B2 (OHEM)
@@ -9,64 +10,20 @@
 """
 
 from error_diagnosis import ErrorType
+from experiments.ablation_configs import (
+    ALL_OPERATORS as _ALL_OPERATORS,
+    FIXED_MAPPING as _FIXED_MAPPING,
+)
 
-
-# =========================
-# 全部可用算子
-# =========================
-
-ALL_OPERATORS = [
-    "zoom_crop", "sr", "zoom_sr",
-    "context_crop", "copy_paste",
-    "hard_negative", "altitude_sim", "mosaic",
-]
-
+ALL_OPERATORS = list(_ALL_OPERATORS)
 
 # =========================
-# 固定规则映射 (A3 使用)
+# 固定规则映射 (A3 使用) — 由 FIXED_MAPPING 自动生成
 # =========================
 
 FIXED_RULE_POLICY = {
-    ErrorType.SCALE_FN: {
-        "operators": ["zoom_sr"],
-        "weights": [1.0],
-    },
-    ErrorType.BOUNDARY_FN: {
-        "operators": ["context_crop"],
-        "weights": [1.0],
-    },
-    ErrorType.OCCLUSION_FN: {
-        "operators": ["copy_paste"],
-        "weights": [1.0],
-    },
-    ErrorType.CROWDING_FN: {
-        "operators": ["mosaic"],
-        "weights": [1.0],
-    },
-    ErrorType.BLUR_FN: {
-        "operators": ["sr"],
-        "weights": [1.0],
-    },
-    ErrorType.LOW_CONTRAST_FN: {
-        "operators": ["sr"],
-        "weights": [1.0],
-    },
-    ErrorType.OTHER_FN: {
-        "operators": ["zoom_crop"],
-        "weights": [1.0],
-    },
-    ErrorType.BACKGROUND_FP: {
-        "operators": ["hard_negative"],
-        "weights": [1.0],
-    },
-    ErrorType.CLUSTER_FP: {
-        "operators": ["hard_negative"],
-        "weights": [1.0],
-    },
-    ErrorType.HIGH_CONF_FP: {
-        "operators": ["hard_negative"],
-        "weights": [1.0],
-    },
+    k: {"operators": [v], "weights": [1.0]}
+    for k, v in _FIXED_MAPPING.items()
 }
 
 
@@ -94,18 +51,17 @@ OPERATOR_ABLATION_POLICIES = {
 
 
 # =========================
-# 实验定义
+# 实验定义 (dict 兼容格式, run_ablation.py 使用)
 # =========================
 
 # mapping_type 说明:
-#   "none"          → 不使用 error type 信息，算子随机选
-#   "fixed_rule"    → 固定规则映射 (FIXED_RULE_POLICY)
-#   "default_adaptive" → 默认策略 + 一次性自适应权重
-#   "bandit"        → 默认策略 + 多轮 Bandit 更新
+#   "none"              → 不使用 error type 信息，算子随机选
+#   "fixed_rule"        → 固定规则映射 (FIXED_RULE_POLICY)
+#   "default_adaptive"  → 默认策略 + 一次性自适应权重
+#   "bandit"            → 默认策略 + 多轮 Bandit 更新
 #   "operator_ablation" → 使用 OPERATOR_ABLATION_POLICIES 中的策略
 
 EXPERIMENTS = {
-    # ── 基线组 ──────────────────────────────────
     "B0": {
         "name": "无增强基线",
         "group": "baseline",
@@ -144,7 +100,6 @@ EXPERIMENTS = {
         "description": "在线困难样本挖掘。不生成新样本，仅重加权困难样本。",
     },
 
-    # ── 框架组件消融 ────────────────────────────
     "A1": {
         "name": "有诊断-无分类-随机修复",
         "group": "ablation",
@@ -206,7 +161,6 @@ EXPERIMENTS = {
         "description": "完整闭环：3 轮迭代，每轮根据 RepairRate 更新策略权重。",
     },
 
-    # ── 算子消融 ────────────────────────────────
     "O1": {
         "name": "算子消融: Zoom only",
         "group": "operator",
@@ -286,7 +240,6 @@ EXPERIMENTS = {
         "description": "完整算子库，与 A3 对照确认。",
     },
 
-    # ── 迭代消融 ────────────────────────────────
     "I1": {
         "name": "迭代消融: 1 轮",
         "group": "iteration",
@@ -325,10 +278,6 @@ EXPERIMENTS = {
     },
 }
 
-
-# =========================
-# 实验组定义（用于批量运行）
-# =========================
 
 EXPERIMENT_GROUPS = {
     "baseline":  ["B0", "B1", "B2"],

@@ -374,10 +374,14 @@ def run_single_experiment(exp_id, exp_cfg, args, YOLO, sr_engine):
                           f"(修复率: {st['repair_rate']:.1%})")
 
                 for et, st in fn_val.items():
-                    for op_name in gen_stats:
-                        if et in op_name:
-                            success = st["repair_rate"] > 0.1
-                            policy.record_repair(et, op_name.split("+")[1], success)
+                    total = sum(v for k, v in gen_stats.items() if k.startswith(et + "+"))
+                    if total == 0:
+                        continue
+                    for key, count in gen_stats.items():
+                        if key.startswith(et + "+"):
+                            op_name = key.split("+", 1)[1]
+                            share = count / total
+                            policy.record_repair(et, op_name, st["repair_rate"] * share)
 
                 updates = policy.update_policy(learning_rate=0.2)
                 for et, info in updates.items():
